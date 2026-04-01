@@ -600,7 +600,7 @@
     <script>
         // State Management
         const state = {
-            apiBaseUrl: localStorage.getItem('api_base') || 'http://localhost:8000',
+            apiBaseUrl: localStorage.getItem('api_base') || window.location.origin,
             step1: {
                 base64: null,
                 resultBase64: null,

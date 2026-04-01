@@ -9,8 +9,12 @@ import logging
 import os
 import re
 import uuid
+from pathlib import Path
 
 import httpx
+
+# 前端静态文件目录（backend 的同级 frontend 目录）
+FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
 _LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 logging.basicConfig(
@@ -26,6 +30,18 @@ from pydantic import BaseModel
 load_dotenv()
 
 app = FastAPI(title="两阶段图像处理应用", version="1.0.0")
+
+# 挂载前端静态文件
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
+app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
+
+
+@app.get("/")
+async def serve_frontend():
+    return FileResponse(str(FRONTEND_DIR / "index.html"))
+
 
 app.add_middleware(
     CORSMiddleware,
