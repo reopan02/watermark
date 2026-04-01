@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>两阶段图像处理 | AI Image Pipeline</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <!-- Bricolage Grotesque for technical/English headers, Noto Sans SC for Chinese readability -->
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;800&family=Noto+Sans+SC:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            /* Neo-brutalist Light Editorial Theme */
+            --bg-color: #f5f5f0;
+            --panel-bg: #ffffff;
+            --border-color: #d4d4cc;
+            --text-main: #1a1a2e;
+            --text-muted: #6b6b7b;
+
+            /* Accents */
+            --neon-lime: #8cb800;
+            --neon-pink: #e0245e;
+            --neon-cyan: #0097a7;
+
+            /* Fonts */
+            --font-en: 'Bricolage Grotesque', sans-serif;
+            --font-zh: 'Noto Sans SC', sans-serif;
+
+            /* Shadows & Transitions */
+            --brutal-shadow: 4px 4px 0px 0px var(--neon-lime);
+            --brutal-shadow-hover: 6px 6px 0px 0px var(--neon-lime);
+            --brutal-shadow-pink: 4px 4px 0px 0px var(--neon-pink);
+            --transition-fast: 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: var(--font-zh);
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            /* Subtle dot pattern background */
+            background-image: radial-gradient(#d4d4cc 1px, transparent 1px);
+            background-size: 24px 24px;
+            overflow-x: hidden;
+        }
+
+        /* Typography */
+        h1, h2, h3, .en-display {
+            font-family: var(--font-en);
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: -0.02em;
+        }
+        h1 {
+            font-size: 2.5rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        h1 .zh {
+            font-family: var(--font-zh);
+            font-weight: 900;
+            letter-spacing: normal;
+        }
+        
+        /* Layout */
+        .app-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+            min-height: 100vh;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 1.5rem;
+            border-bottom: 2px solid var(--border-color);
+        }
+
+        .settings-btn {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 0.75rem;
+            cursor: pointer;
+            border-radius: 0;
+            transition: var(--transition-fast);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .settings-btn:hover {
+            border-color: var(--neon-cyan);
+            color: var(--neon-cyan);
+            box-shadow: 3px 3px 0px 0px var(--neon-cyan);
+            transform: translate(-2px, -2px);
+        }
+        .settings-btn svg {
+            width: 24px;
+            height: 24px;
+        }
+
+        .pipeline-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 3rem;
+            flex: 1;
+        }
+
+        @media (max-width: 1024px) {
+            .pipeline-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Panels (Nodes) */
+        .node-panel {
+            background-color: var(--panel-bg);
+            border: 2px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            transition: var(--transition-fast);
+        }
+
+        .node-header {
+            padding: 1rem 1.5rem;
+            border-bottom: 2px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.03);
+        }
+
+        .node-header .step-badge {
+            background: var(--text-main);
+            color: var(--panel-bg);
+            padding: 0.25rem 0.75rem;
+            font-family: var(--font-en);
+            font-weight: 800;
+            font-size: 0.875rem;
+        }
+
+        .node-body {
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            flex: 1;
+        }
+
+        /* Image Areas */
+        .image-container {
+            border: 2px dashed var(--border-color);
+            background: rgba(0,0,0,0.02);
+            min-height: 320px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+            transition: var(--transition-fast);
+        }
+        .image-container.active {
+            border-style: solid;
+            border-color: var(--text-main);
+        }
+        .image-container.dragover {
+            border-color: var(--neon-lime);
+            background: rgba(140, 184, 0, 0.06);
+        }
+
+        .upload-placeholder {
+            text-align: center;
+            color: var(--text-muted);
+            pointer-events: none;
+            padding: 2rem;
+        }
+        .upload-placeholder svg {
+            width: 48px;
+            height: 48px;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+        
+        .upload-input {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            opacity: 0;
+            cursor: pointer;
+            z-index: 10;
+        }
+
+        .preview-img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            position: absolute;
+            top: 0; left: 0;
+            z-index: 5;
+            display: none;
+        }
+        .preview-img.visible {
+            display: block;
+        }
+
+        /* Result Area */
+        .result-area {
+            display: none;
+            flex-direction: column;
+            gap: 1rem;
+            margin-top: 1rem;
+            padding-top: 1.5rem;
+            border-top: 2px dashed var(--border-color);
+        }
+        .result-area.visible {
+            display: flex;
+        }
+        .result-title {
+            font-size: 0.875rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+
+        /* Buttons */
+        .btn {
+            font-family: var(--font-zh);
+            font-weight: 800;
+            font-size: 1rem;
+            padding: 1rem 1.5rem;
+            cursor: pointer;
+            border: 2px solid transparent;
+            text-transform: uppercase;
+            transition: var(--transition-fast);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            width: 100%;
+        }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
+        .btn-primary {
+            background-color: var(--neon-lime);
+            color: #000;
+            box-shadow: var(--brutal-shadow);
+        }
+        .btn-primary:hover:not(:disabled) {
+            transform: translate(-2px, -2px);
+            box-shadow: var(--brutal-shadow-hover);
+        }
+
+        .btn-secondary {
+            background-color: transparent;
+            border-color: var(--text-main);
+            color: var(--text-main);
+        }
+        .btn-secondary:hover:not(:disabled) {
+            background-color: var(--text-main);
+            color: var(--panel-bg);
+        }
+
+        .btn-chain {
+            background-color: var(--neon-pink);
+            color: #fff;
+            box-shadow: var(--brutal-shadow-pink);
+            margin-top: 0.5rem;
+        }
+        .btn-chain:hover:not(:disabled) {
+            transform: translate(-2px, -2px);
+            box-shadow: 6px 6px 0px 0px var(--neon-pink);
+        }
+
+        /* Loading State Overlay */
+        .loading-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(245, 245, 240, 0.88);
+            backdrop-filter: blur(4px);
+            z-index: 20;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        .loading-overlay.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        /* Scanning laser loader */
+        .scanner-container {
+            width: 80%;
+            height: 100px;
+            border: 1px solid var(--border-color);
+            position: relative;
+            overflow: hidden;
+            margin-bottom: 1rem;
+        }
+        .scanner-laser {
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 2px;
+            background: var(--neon-lime);
+            box-shadow: 0 0 10px 2px var(--neon-lime);
+            animation: scan 2s ease-in-out infinite alternate;
+        }
+        @keyframes scan {
+            0% { top: 0; }
+            100% { top: 100%; }
+        }
+        
+        .loading-text {
+            font-family: var(--font-en);
+            color: var(--neon-lime);
+            letter-spacing: 0.1em;
+            font-size: 0.875rem;
+            animation: pulse 1.5s infinite;
+        }
+        .loading-subtext {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 0.5rem;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* Settings Modal */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.4);
+            backdrop-filter: blur(8px);
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+        }
+        .modal-overlay.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+        .modal-content {
+            background: var(--panel-bg);
+            border: 2px solid var(--border-color);
+            padding: 2rem;
+            width: 100%;
+            max-width: 480px;
+            box-shadow: 8px 8px 0px 0px var(--neon-cyan);
+            transform: translateY(20px);
+            transition: transform 0.3s;
+        }
+        .modal-overlay.active .modal-content {
+            transform: translateY(0);
+        }
+        .form-group {
+            margin-bottom: 1.5rem;
+            margin-top: 1.5rem;
+        }
+        .form-label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-family: var(--font-en);
+            color: var(--text-muted);
+        }
+        .form-input {
+            width: 100%;
+            background: var(--bg-color);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 0.75rem 1rem;
+            font-family: var(--font-en);
+            font-size: 1rem;
+        }
+        .form-input:focus {
+            outline: none;
+            border-color: var(--neon-cyan);
+        }
+
+        /* Toasts */
+        .toast-container {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            z-index: 200;
+        }
+        .toast {
+            background: var(--panel-bg);
+            border: 2px solid var(--text-main);
+            color: var(--text-main);
+            padding: 1rem 1.5rem;
+            box-shadow: 4px 4px 0px 0px var(--text-main);
+            transform: translateX(120%);
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        .toast.show {
+            transform: translateX(0);
+        }
+        .toast.error {
+            border-color: var(--neon-pink);
+            box-shadow: 4px 4px 0px 0px var(--neon-pink);
+            color: #fff;
+            background-color: var(--neon-pink);
+        }
+        .toast.success {
+            border-color: var(--neon-lime);
+            box-shadow: 4px 4px 0px 0px var(--neon-lime);
+            background-color: var(--panel-bg);
+            color: var(--text-main);
+        }
+
+        /* Chained Highlight Animation */
+        @keyframes flash-highlight {
+            0% { box-shadow: 0 0 0px 0px var(--neon-pink); border-color: var(--border-color); }
+            50% { box-shadow: 0 0 30px 5px var(--neon-pink); border-color: var(--neon-pink); transform: scale(1.02); }
+            100% { box-shadow: 0 0 0px 0px transparent; border-color: var(--border-color); transform: scale(1); }
+        }
+        .flash-highlight {
+            animation: flash-highlight 1s ease-out;
+        }
+
+        /* Utilities */
+        .hidden { display: none !important; }
+
+    </style>
+</head>
+<body>
+
+    <div class="app-container">
+        <!-- Header -->
+        <header>
+            <h1>
+                <span class="en-display">PIPELINE.</span>
+                <span class="zh">两阶段图像处理</span>
+            </h1>
+            <button class="settings-btn" id="btn-settings" title="API Settings">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M10.343 3.94c.09-.542.56-.94 1.11-.94h1.093c.55 0 1.02.398 1.11.94l.149.894c.07.424.384.764.78.93.398.164.855.142 1.205-.108l.737-.527a1.125 1.125 0 011.45.12l.773.774c.39.389.44 1.002.12 1.45l-.527.737c-.25.35-.272.806-.107 1.204.165.397.505.71.93.78l.893.15c.543.09.94.56.94 1.109v1.094c0 .55-.397 1.02-.94 1.11l-.893.149c-.425.07-.765.383-.93.78-.165.398-.143.854.107 1.204l.527.738c.32.447.269 1.06-.12 1.45l-.774.773a1.125 1.125 0 01-1.449.12l-.738-.527c-.35-.25-.806-.272-1.203-.107-.398.165-.71.505-.781.929l-.149.894c-.09.542-.56.94-1.11.94h-1.094c-.55 0-1.019-.398-1.11-.94l-.148-.894c-.071-.424-.384-.764-.781-.93-.398-.164-.854-.142-1.204.108l-.738.527c-.447.32-1.06.269-1.45-.12l-.773-.774a1.125 1.125 0 01-.12-1.45l.527-.737c.25-.35.273-.806.108-1.204-.165-.397-.505-.71-.93-.78l-.894-.15c-.542-.09-.94-.56-.94-1.109v-1.094c0-.55.398-1.02.94-1.11l.894-.149c.424-.07.765-.383.93-.78.165-.398.143-.854-.107-1.204l-.527-.738a1.125 1.125 0 01.12-1.45l.773-.773a1.125 1.125 0 011.45-.12l.737.527c.35.25.807.272 1.204.107.397-.165.71-.505.78-.929l.15-.894z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+            </button>
+        </header>
+
+        <!-- Main Pipeline Area -->
+        <main class="pipeline-grid">
+            
+            <!-- STEP 1: Remove Text -->
+            <section class="node-panel" id="step1-panel">
+                <div class="node-header">
+                    <h2>01. 去除文字/水印</h2>
+                    <span class="step-badge">GROK MODEL</span>
+                </div>
+                
+                <div class="node-body">
+                    <!-- Upload Zone -->
+                    <div class="image-container" id="dropzone-1">
+                        <input type="file" id="file-input-1" class="upload-input" accept="image/png, image/jpeg, image/webp, image/gif">
+                        <div class="upload-placeholder" id="placeholder-1">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
+                            </svg>
+                            <p>拖拽图片至此处，或点击上传</p>
+                            <p style="font-size: 0.75rem; margin-top: 0.5rem; color: var(--text-muted); font-family: var(--font-en);">JPG, PNG, WEBP, GIF</p>
+                        </div>
+                        <img id="preview-1" class="preview-img" alt="Step 1 Source">
+                        
+                        <!-- Loading Overlay -->
+                        <div class="loading-overlay" id="loading-1">
+                            <div class="scanner-container">
+                                <div class="scanner-laser"></div>
+                            </div>
+                            <div class="loading-text">PROCESSING // TENSORS ACTIVE</div>
+                            <div class="loading-subtext">预计需要 30-120 秒，请耐心等待</div>
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary" id="btn-task1" disabled>
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 20px;">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        去除文字/水印
+                    </button>
+
+                    <!-- Result Area -->
+                    <div class="result-area" id="result-area-1">
+                        <span class="result-title">RESULT // OUTPUT_01</span>
+                        <div class="image-container active" style="min-height: 240px;">
+                            <img id="result-img-1" class="preview-img visible" alt="Step 1 Result">
+                        </div>
+                        <div style="display: flex; gap: 1rem;">
+                            <button class="btn btn-secondary" id="btn-download-1" style="flex: 1;">下载</button>
+                            <a id="download-link-1" style="display: none;"></a>
+                        </div>
+                        <button class="btn btn-chain" id="btn-chain">
+                            继续补全画面 →
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- STEP 2: Complete Image -->
+            <section class="node-panel" id="step2-panel">
+                <div class="node-header">
+                    <h2>02. 补全画面</h2>
+                    <span class="step-badge">GEMINI MODEL</span>
+                </div>
+                
+                <div class="node-body">
+                    <!-- Upload Zone (Hidden if chained) -->
+                    <div class="image-container" id="dropzone-2">
+                        <input type="file" id="file-input-2" class="upload-input" accept="image/png, image/jpeg, image/webp, image/gif">
+                        <div class="upload-placeholder" id="placeholder-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
+                            </svg>
+                            <p>上传图片 或 从左侧联动导入</p>
+                        </div>
+                        <img id="preview-2" class="preview-img" alt="Step 2 Source">
+                        
+                        <!-- Loading Overlay -->
+                        <div class="loading-overlay" id="loading-2">
+                            <div class="scanner-container">
+                                <div class="scanner-laser" style="background: var(--neon-pink); box-shadow: 0 0 10px 2px var(--neon-pink);"></div>
+                            </div>
+                            <div class="loading-text" style="color: var(--neon-pink);">GENERATING // CONTEXT EXTENSION</div>
+                            <div class="loading-subtext">预计需要 30-120 秒，请耐心等待</div>
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary" id="btn-task2" disabled style="background-color: var(--neon-pink); box-shadow: var(--brutal-shadow-pink);">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 20px;">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+                        </svg>
+                        补全画面
+                    </button>
+
+                    <!-- Result Area -->
+                    <div class="result-area" id="result-area-2">
+                        <span class="result-title">RESULT // OUTPUT_02</span>
+                        <div class="image-container active" style="min-height: 240px;">
+                            <img id="result-img-2" class="preview-img visible" alt="Step 2 Result">
+                        </div>
+                        <button class="btn btn-secondary" id="btn-download-2">下载最终结果</button>
+                        <a id="download-link-2" style="display: none;"></a>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal-overlay" id="settings-modal">
+        <div class="modal-content">
+            <h2 style="font-size: 1.5rem; margin-bottom: 1rem;">SYSTEM CONFIG</h2>
+            <div class="form-group">
+                <label class="form-label" for="api-url">API BACKEND URL</label>
+                <input type="text" id="api-url" class="form-input" placeholder="http://localhost:8000">
+            </div>
+            <div style="display: flex; gap: 1rem; margin-top: 2rem;">
+                <button class="btn btn-secondary" id="btn-close-settings" style="flex: 1;">取消</button>
+                <button class="btn btn-primary" id="btn-save-settings" style="flex: 1; background: var(--neon-cyan); box-shadow: 4px 4px 0px 0px var(--neon-cyan);">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <script>
+        // State Management
+        const state = {
+            apiBaseUrl: localStorage.getItem('api_base') || 'http://localhost:8000',
+            step1: {
+                base64: null,
+                resultBase64: null,
+                taskId: null
+            },
+            step2: {
+                base64: null,
+                sourceTaskId: null,
+                resultBase64: null
+            }
+        };
+
+        // DOM Elements
+        const els = {
+            // Settings
+            btnSettings: document.getElementById('btn-settings'),
+            modalSettings: document.getElementById('settings-modal'),
+            inputApiUrl: document.getElementById('api-url'),
+            btnSaveSettings: document.getElementById('btn-save-settings'),
+            btnCloseSettings: document.getElementById('btn-close-settings'),
+            toastContainer: document.getElementById('toast-container'),
+
+            // Step 1
+            dropzone1: document.getElementById('dropzone-1'),
+            fileInput1: document.getElementById('file-input-1'),
+            preview1: document.getElementById('preview-1'),
+            placeholder1: document.getElementById('placeholder-1'),
+            btnTask1: document.getElementById('btn-task1'),
+            loading1: document.getElementById('loading-1'),
+            resultArea1: document.getElementById('result-area-1'),
+            resultImg1: document.getElementById('result-img-1'),
+            btnDownload1: document.getElementById('btn-download-1'),
+            linkDownload1: document.getElementById('download-link-1'),
+            btnChain: document.getElementById('btn-chain'),
+
+            // Step 2
+            panel2: document.getElementById('step2-panel'),
+            dropzone2: document.getElementById('dropzone-2'),
+            fileInput2: document.getElementById('file-input-2'),
+            preview2: document.getElementById('preview-2'),
+            placeholder2: document.getElementById('placeholder-2'),
+            btnTask2: document.getElementById('btn-task2'),
+            loading2: document.getElementById('loading-2'),
+            resultArea2: document.getElementById('result-area-2'),
+            resultImg2: document.getElementById('result-img-2'),
+            btnDownload2: document.getElementById('btn-download-2'),
+            linkDownload2: document.getElementById('download-link-2')
+        };
+
+        // Init Settings
+        els.inputApiUrl.value = state.apiBaseUrl;
+
+        // --- Utility Functions ---
+
+        function showToast(message, type = 'success') {
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            
+            const icon = type === 'success' 
+                ? '<svg style="width:20px" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>'
+                : '<svg style="width:20px" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>';
+            
+            toast.innerHTML = `${icon} <span style="font-family: var(--font-zh); font-weight: 700;">${message}</span>`;
+            els.toastContainer.appendChild(toast);
+            
+            // Trigger reflow for animation
+            setTimeout(() => toast.classList.add('show'), 10);
+            
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
+        }
+
+        function convertFileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = error => reject(error);
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function setupDropzone(dropzoneEl, inputEl, previewEl, placeholderEl, onFileLoaded) {
+            // Highlight dropzone
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropzoneEl.addEventListener(eventName, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    dropzoneEl.classList.add('dragover');
+                });
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropzoneEl.addEventListener(eventName, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    dropzoneEl.classList.remove('dragover');
+                });
+            });
+
+            // Handle Drop
+            dropzoneEl.addEventListener('drop', async (e) => {
+                const file = e.dataTransfer.files[0];
+                if (file && file.type.startsWith('image/')) {
+                    handleFileSelection(file);
+                }
+            });
+
+            // Handle Click/Select
+            inputEl.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) handleFileSelection(file);
+            });
+
+            async function handleFileSelection(file) {
+                try {
+                    const base64 = await convertFileToBase64(file);
+                    previewEl.src = base64;
+                    previewEl.classList.add('visible');
+                    placeholderEl.classList.add('hidden');
+                    dropzoneEl.classList.add('active');
+                    onFileLoaded(base64);
+                } catch (err) {
+                    showToast('图片解析失败', 'error');
+                }
+            }
+        }
+
+        function triggerDownload(base64Data, filename, linkElement) {
+            linkElement.href = base64Data;
+            linkElement.download = filename;
+            linkElement.click();
+        }
+
+        // --- Event Listeners ---
+
+        // Settings Modal
+        els.btnSettings.addEventListener('click', () => els.modalSettings.classList.add('active'));
+        els.btnCloseSettings.addEventListener('click', () => els.modalSettings.classList.remove('active'));
+        els.btnSaveSettings.addEventListener('click', () => {
+            const newUrl = els.inputApiUrl.value.trim();
+            if (newUrl) {
+                state.apiBaseUrl = newUrl;
+                localStorage.setItem('api_base', newUrl);
+                showToast('配置已保存');
+                els.modalSettings.classList.remove('active');
+            }
+        });
+
+        // Setup Dropzones
+        setupDropzone(els.dropzone1, els.fileInput1, els.preview1, els.placeholder1, (base64) => {
+            state.step1.base64 = base64;
+            els.btnTask1.disabled = false;
+        });
+
+        setupDropzone(els.dropzone2, els.fileInput2, els.preview2, els.placeholder2, (base64) => {
+            state.step2.base64 = base64;
+            state.step2.sourceTaskId = null; // Clear if manual upload
+            els.btnTask2.disabled = false;
+        });
+
+        // Task 1 Execution
+        els.btnTask1.addEventListener('click', async () => {
+            if (!state.step1.base64) return;
+            
+            els.loading1.classList.add('active');
+            els.btnTask1.disabled = true;
+            els.resultArea1.classList.remove('visible');
+
+            try {
+                const response = await fetch(`${state.apiBaseUrl}/api/task1`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ image_base64: state.step1.base64 })
+                });
+
+                if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+                
+                const data = await response.json();
+                
+                if (data.result_image_base64) {
+                    state.step1.resultBase64 = data.result_image_base64;
+                    state.step1.taskId = data.task_id;
+                    
+                    els.resultImg1.src = data.result_image_base64;
+                    els.resultArea1.classList.add('visible');
+                    showToast('文字/水印去除成功!');
+                } else {
+                    throw new Error(data.message || '未知错误');
+                }
+            } catch (error) {
+                console.error('Task 1 Error:', error);
+                showToast(`处理失败: ${error.message}`, 'error');
+            } finally {
+                els.loading1.classList.remove('active');
+                els.btnTask1.disabled = false;
+            }
+        });
+
+        // Download Task 1 Result
+        els.btnDownload1.addEventListener('click', () => {
+            if (state.step1.resultBase64) {
+                triggerDownload(state.step1.resultBase64, `task1_result_${Date.now()}.png`, els.linkDownload1);
+            }
+        });
+
+        // Step Chaining Logic
+        els.btnChain.addEventListener('click', () => {
+            if (!state.step1.resultBase64) return;
+
+            // Transfer data to Step 2 state
+            state.step2.base64 = state.step1.resultBase64;
+            state.step2.sourceTaskId = state.step1.taskId;
+
+            // Update Step 2 UI
+            els.preview2.src = state.step1.resultBase64;
+            els.preview2.classList.add('visible');
+            els.placeholder2.classList.add('hidden');
+            els.dropzone2.classList.add('active');
+            els.btnTask2.disabled = false;
+
+            // Visual feedback
+            els.panel2.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            els.panel2.classList.add('flash-highlight');
+            setTimeout(() => {
+                els.panel2.classList.remove('flash-highlight');
+            }, 1000);
+            
+            showToast('已联动至步骤 2');
+        });
+
+        // Task 2 Execution
+        els.btnTask2.addEventListener('click', async () => {
+            if (!state.step2.base64) return;
+            
+            els.loading2.classList.add('active');
+            els.btnTask2.disabled = true;
+            els.resultArea2.classList.remove('visible');
+
+            try {
+                const payload = { image_base64: state.step2.base64 };
+                if (state.step2.sourceTaskId) {
+                    payload.source_task_id = state.step2.sourceTaskId;
+                }
+
+                const response = await fetch(`${state.apiBaseUrl}/api/task2`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+                
+                const data = await response.json();
+                
+                if (data.result_image_base64) {
+                    state.step2.resultBase64 = data.result_image_base64;
+                    
+                    els.resultImg2.src = data.result_image_base64;
+                    els.resultArea2.classList.add('visible');
+                    showToast('画面补全成功!');
+                } else {
+                    throw new Error(data.message || '未知错误');
+                }
+            } catch (error) {
+                console.error('Task 2 Error:', error);
+                showToast(`处理失败: ${error.message}`, 'error');
+            } finally {
+                els.loading2.classList.remove('active');
+                els.btnTask2.disabled = false;
+            }
+        });
+
+        // Download Task 2 Result
+        els.btnDownload2.addEventListener('click', () => {
+            if (state.step2.resultBase64) {
+                triggerDownload(state.step2.resultBase64, `task2_result_${Date.now()}.png`, els.linkDownload2);
+            }
+        });
+
+    </script>
+</body>
+</html>
